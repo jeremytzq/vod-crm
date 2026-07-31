@@ -4,9 +4,14 @@ import { v4 as uuid } from 'uuid';
 import { db } from './db.js';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const SESSION_COOKIE = 'crm_session';
+const OAUTH_STATE_COOKIE = 'g_oauth_state';
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+const SERVER_ORIGIN = process.env.SERVER_ORIGIN || `http://localhost:${process.env.PORT || 3001}`;
+const GOOGLE_REDIRECT_URI = `${SERVER_ORIGIN}/api/auth/google/callback`;
 
 if (!GOOGLE_CLIENT_ID) {
   console.warn('[auth] GOOGLE_CLIENT_ID is not set — Google sign-in will fail.');
@@ -15,7 +20,12 @@ if (!SESSION_SECRET) {
   throw new Error('SESSION_SECRET must be set in the environment.');
 }
 
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+// One client handles both sign-in paths: verifying the ID token posted by
+// the Google Identity Services button, and the classic OAuth redirect flow
+// used as a fallback when that button fails to load (ad blockers, strict
+// third-party-cookie settings, older browsers, etc). The redirect flow needs
+// a client secret because it's a confidential (server-side) OAuth client.
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
 
 const upsertUserStmt = db.prepare(`
   INSERT INTO users (id, google_sub, email, name, picture)
@@ -59,6 +69,41 @@ export async function verifyGoogleCredential(credential) {
   };
   upsertUserStmt.run(user);
   return findByIdStmt.get(user.id);
+}
+
+/** Builds the URL that starts the redirect-based Google sign-in fallback. */
+export function getGoogleAuthUrl(state) {
+  return googleClient.generateAuthUrl({
+    access_type: 'online',
+    scope: ['openid', 'email', 'profile'],
+    prompt: 'select_account',
+    state,
+  });
+}
+
+/** Exchanges an OAuth redirect `code` for tokens and upserts the user. */
+export async function handleGoogleOAuthCallback(code) {
+  const { tokens } = await googleClient.getToken(code);
+  if (!tokens.id_token) {
+    throw new Error('Google did not return an id_token');
+  }
+  return verifyGoogleCredential(tokens.id_token);
+}
+
+export function setOAuthStateCookie(res, state) {
+  res.cookie(OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 5 * 60 * 1000,
+    path: '/',
+  });
+}
+
+export function readAndClearOAuthStateCookie(req, res) {
+  const state = req.cookies?.[OAUTH_STATE_COOKIE];
+  res.clearCookie(OAUTH_STATE_COOKIE, { path: '/' });
+  return state;
 }
 
 export function issueSessionToken(user) {

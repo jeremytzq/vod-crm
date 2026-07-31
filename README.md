@@ -7,6 +7,10 @@ verifies the Google-issued ID token before letting a request touch any data.
 
 ## How the Google integration works
 
+There is no username/password anywhere in this app — Google sign-in is the
+only way in, and the first time an account signs in it's automatically
+provisioned its own CRM. Nothing to register, invite, or configure per user.
+
 1. The client loads Google Identity Services (`accounts.google.com/gsi/client`)
    and renders the official "Sign in with Google" button
    (`client/src/components/GoogleSignInButton.jsx`).
@@ -25,6 +29,14 @@ verifies the Google-issued ID token before letting a request touch any data.
    `owner_id = req.user.id` (see `server/src/crudFactory.js`), so one
    Google account can never see or modify another's data.
 
+**Fallback sign-in path:** the Identity Services button is a client-side
+widget, and it can fail to render in some browsers (ad blockers, strict
+third-party-cookie settings). If it doesn't show up within ~2.5 seconds,
+the login page reveals a plain "Continue with Google" link
+(`GET /api/auth/google/redirect`) that does a full-page redirect through
+Google's standard OAuth consent screen — no JavaScript widget required, so
+it always works. Both paths land the user in the same place.
+
 ## Project layout
 
 ```
@@ -40,7 +52,10 @@ In [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
 - Create an **OAuth 2.0 Client ID** of type "Web application".
 - Add `http://localhost:5173` (and your production origin) to
   **Authorized JavaScript origins**.
-- Copy the generated client ID.
+- Add `http://localhost:3001/api/auth/google/callback` (and your production
+  server origin + `/api/auth/google/callback`) to **Authorized redirect
+  URIs** — this enables the fallback sign-in link.
+- Copy the generated client ID and client secret.
 
 ### 2. Configure environment variables
 

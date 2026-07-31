@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+
+const WIDGET_TIMEOUT_MS = 2500;
 
 export default function GoogleSignInButton() {
   const buttonRef = useRef(null);
   const { handleGoogleCredential, googleClientId } = useAuth();
+  const [widgetRendered, setWidgetRendered] = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     if (!googleClientId) return;
@@ -24,6 +28,7 @@ export default function GoogleSignInButton() {
         shape: 'pill',
         text: 'signin_with',
       });
+      setWidgetRendered(true);
     }
 
     if (window.google?.accounts?.id) {
@@ -39,6 +44,16 @@ export default function GoogleSignInButton() {
     }
   }, [googleClientId, handleGoogleCredential]);
 
+  // If the Google script never loads (blocked, offline, strict browser
+  // privacy settings), fall back to a plain link that starts the
+  // server-side OAuth redirect flow — no JS widget dependency at all.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!widgetRendered) setShowFallback(true);
+    }, WIDGET_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [widgetRendered]);
+
   if (!googleClientId) {
     return (
       <p className="text-sm text-red-600">
@@ -47,5 +62,17 @@ export default function GoogleSignInButton() {
     );
   }
 
-  return <div ref={buttonRef} />;
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <div ref={buttonRef} />
+      {showFallback && !widgetRendered && (
+        <a
+          href="/api/auth/google/redirect"
+          className="text-sm px-4 py-2 rounded-full border border-gray-300 hover:bg-gray-50"
+        >
+          Continue with Google
+        </a>
+      )}
+    </div>
+  );
 }
