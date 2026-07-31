@@ -1,4 +1,10 @@
-import { google } from 'googleapis';
+// Scoped per-API packages instead of the monolithic `googleapis` package —
+// that one bundles a client for every Google API in existence and is huge
+// enough to cause real problems in a serverless deployment (slow cold
+// starts, bundle-size limits). These two are the same generated clients,
+// just packaged individually.
+import { sheets } from '@googleapis/sheets';
+import { drive } from '@googleapis/drive';
 
 // Schema for the one spreadsheet each Google account gets — this is the
 // entire "database" for that account. Column order here is the column
@@ -43,11 +49,11 @@ function columnLetter(n) {
 }
 
 function sheetsApiFor(oauth2Client) {
-  return google.sheets({ version: 'v4', auth: oauth2Client });
+  return sheets({ version: 'v4', auth: oauth2Client });
 }
 
 function driveApiFor(oauth2Client) {
-  return google.drive({ version: 'v3', auth: oauth2Client });
+  return drive({ version: 'v3', auth: oauth2Client });
 }
 
 async function findSpreadsheetId(drive) {
