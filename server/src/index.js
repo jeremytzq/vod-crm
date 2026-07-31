@@ -34,6 +34,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`CRM server listening on http://localhost:${PORT}`);
-});
+export default app;
+
+// Vercel (and similar serverless platforms) import this module for its
+// default export and invoke it per-request themselves — calling listen()
+// there would be pointless and can interfere with that. Only bind a port
+// for traditional "always-on" hosting (local dev, Render, Fly, etc).
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`CRM server listening on http://localhost:${PORT}`);
+  });
+}
