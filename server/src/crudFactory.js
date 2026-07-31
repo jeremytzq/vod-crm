@@ -1,62 +1,109 @@
 import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
-import { db } from './db.js';
-import { requireAuth } from './auth.js';
+import { requireAuth, getAuthorizedClient } from './auth.js';
+import { listRows, appendRow, updateRow, deleteRow, findRowById } from './sheets.js';
+
+function normalizeField(field) {
+  return typeof field === 'string' ? { name: field, type: 'string' } : field;
+}
+
+// Sheets stores everything as text, so numbers/booleans need explicit
+// coercion in both directions or e.g. the string "0" (falsy nowhere in
+// JS-land except as a real 0) would render as a checked checkbox.
+function toSheetValue(value, type) {
+  if (type === 'boolean') return value ? 'true' : 'false';
+  if (type === 'number') return value === '' || value == null ? '' : String(value);
+  return value ?? '';
+}
+
+function fromSheetValue(value, type) {
+  if (type === 'boolean') return value === 'true' || value === true || value === '1';
+  if (type === 'number') return value === '' || value == null ? null : Number(value);
+  return value ?? '';
+}
 
 /**
- * Builds an owner-scoped CRUD router for a single table. Every statement is
- * filtered by owner_id = req.user.id, so a signed-in Google account can only
- * ever see or mutate the CRM records it created.
+ * Builds an owner-scoped CRUD router for one tab of the signed-in Google
+ * account's own CRM spreadsheet. "Owner-scoped" here is automatic: every
+ * request already carries req.spreadsheetId for exactly one account (see
+ * requireAuth in auth.js), so there's no cross-account row to accidentally
+ * touch — the account boundary is the file boundary.
  */
-export function crudRouter({ table, columns, orderBy = 'created_at DESC' }) {
+export function crudRouter({ tab, fields, sort }) {
   const router = Router();
   router.use(requireAuth);
+  const columns = fields.map(normalizeField);
 
-  const insertCols = ['id', 'owner_id', ...columns];
-  const insertSql = `INSERT INTO ${table} (${insertCols.join(', ')}) VALUES (${insertCols.map((c) => '@' + c).join(', ')})`;
-  const insertStmt = db.prepare(insertSql);
+  function serialize(row) {
+    const out = { id: row.id, created_at: row.created_at, updated_at: row.updated_at };
+    for (const col of columns) out[col.name] = fromSheetValue(row[col.name], col.type);
+    return out;
+  }
 
-  const listStmt = db.prepare(`SELECT * FROM ${table} WHERE owner_id = ? ORDER BY ${orderBy}`);
-  const getStmt = db.prepare(`SELECT * FROM ${table} WHERE id = ? AND owner_id = ?`);
-  const deleteStmt = db.prepare(`DELETE FROM ${table} WHERE id = ? AND owner_id = ?`);
-
-  router.get('/', (req, res) => {
-    res.json(listStmt.all(req.user.id));
-  });
-
-  router.get('/:id', (req, res) => {
-    const row = getStmt.get(req.params.id, req.user.id);
-    if (!row) return res.status(404).json({ error: 'Not found' });
-    res.json(row);
-  });
-
-  router.post('/', (req, res) => {
-    const record = { id: uuid(), owner_id: req.user.id };
-    for (const col of columns) record[col] = req.body?.[col] ?? null;
-    insertStmt.run(record);
-    res.status(201).json(getStmt.get(record.id, req.user.id));
-  });
-
-  router.put('/:id', (req, res) => {
-    const existing = getStmt.get(req.params.id, req.user.id);
-    if (!existing) return res.status(404).json({ error: 'Not found' });
-
-    const sets = columns.map((c) => `${c} = @${c}`).join(', ');
-    const updateStmt = db.prepare(
-      `UPDATE ${table} SET ${sets}, updated_at = datetime('now') WHERE id = @id AND owner_id = @owner_id`
-    );
-    const record = { id: req.params.id, owner_id: req.user.id };
-    for (const col of columns) {
-      record[col] = req.body?.[col] !== undefined ? req.body[col] : existing[col];
+  router.get('/', async (req, res, next) => {
+    try {
+      const client = getAuthorizedClient(req.sessionAuth);
+      const rows = await listRows(client, req.spreadsheetId, tab);
+      const items = rows.map(serialize);
+      if (sort) items.sort(sort);
+      res.json(items);
+    } catch (err) {
+      next(err);
     }
-    updateStmt.run(record);
-    res.json(getStmt.get(req.params.id, req.user.id));
   });
 
-  router.delete('/:id', (req, res) => {
-    const result = deleteStmt.run(req.params.id, req.user.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
-    res.status(204).end();
+  router.get('/:id', async (req, res, next) => {
+    try {
+      const client = getAuthorizedClient(req.sessionAuth);
+      const row = await findRowById(client, req.spreadsheetId, tab, req.params.id);
+      if (!row) return res.status(404).json({ error: 'Not found' });
+      res.json(serialize(row));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/', async (req, res, next) => {
+    try {
+      const client = getAuthorizedClient(req.sessionAuth);
+      const now = new Date().toISOString();
+      const record = { id: uuid(), created_at: now, updated_at: now };
+      for (const col of columns) record[col.name] = toSheetValue(req.body?.[col.name], col.type);
+      await appendRow(client, req.spreadsheetId, tab, record);
+      res.status(201).json(serialize(record));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put('/:id', async (req, res, next) => {
+    try {
+      const client = getAuthorizedClient(req.sessionAuth);
+      const existing = await findRowById(client, req.spreadsheetId, tab, req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      const record = { id: existing.id, created_at: existing.created_at, updated_at: new Date().toISOString() };
+      for (const col of columns) {
+        const incoming = req.body?.[col.name];
+        record[col.name] = incoming !== undefined ? toSheetValue(incoming, col.type) : existing[col.name];
+      }
+      await updateRow(client, req.spreadsheetId, tab, existing._row, record);
+      res.json(serialize(record));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/:id', async (req, res, next) => {
+    try {
+      const client = getAuthorizedClient(req.sessionAuth);
+      const existing = await findRowById(client, req.spreadsheetId, tab, req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      await deleteRow(client, req.spreadsheetId, tab, existing._row);
+      res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
   });
 
   return router;

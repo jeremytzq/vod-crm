@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
-import './db.js';
 import { authRouter } from './routes/auth.js';
 import { contactsRouter } from './routes/contacts.js';
 import { companiesRouter } from './routes/companies.js';

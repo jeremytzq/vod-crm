@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
 import {
-  verifyGoogleCredential,
   getGoogleAuthUrl,
   handleGoogleOAuthCallback,
   setOAuthStateCookie,
@@ -17,27 +16,11 @@ export const authRouter = Router();
 
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
-// Frontend posts the Google Identity Services `credential` (ID token) here.
-authRouter.post('/google', async (req, res) => {
-  const { credential } = req.body ?? {};
-  if (!credential) {
-    return res.status(400).json({ error: 'Missing credential' });
-  }
-  try {
-    const user = await verifyGoogleCredential(credential);
-    const token = issueSessionToken(user);
-    setSessionCookie(res, token);
-    res.json({ user: publicUser(user) });
-  } catch (err) {
-    console.error('[auth/google]', err.message);
-    res.status(401).json({ error: 'Google sign-in failed' });
-  }
-});
-
-// Fallback sign-in path for when the Google Identity Services button never
-// loads (blocked script, third-party-cookie restrictions, etc). A plain
-// link to this route always works because it's a full-page redirect to
-// Google, not something that depends on a JS widget rendering client-side.
+// Sign-in is a single, plain full-page redirect through Google's standard
+// OAuth consent screen — no client-side JS widget involved, so it can't
+// fail to render the way a script-injected button can. It also requests
+// Drive/Sheets scopes (needed to create/use this account's CRM
+// spreadsheet), which a client-side ID-token-only flow can't grant.
 authRouter.get('/google/redirect', (req, res) => {
   const state = uuid();
   setOAuthStateCookie(res, state);
