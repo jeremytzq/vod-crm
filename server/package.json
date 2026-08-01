@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "vercel-build": "npm install --prefix ../client && npm run build --prefix ../client && rm -rf public && cp -r ../client/dist public"
   },
   "dependencies": {
     "@googleapis/drive": "^8.14.0",

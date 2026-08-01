@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -28,6 +30,21 @@ app.use('/api/deals', dealsRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/notes', notesRouter);
 app.use('/api/dashboard', dashboardRouter);
+
+// Serve the built React client from this same server (populated at build
+// time by the "vercel-build" script — see package.json) so one deployment
+// and one URL covers both the API and the UI, with no separate hosting to
+// configure. Falls back to index.html for any non-API path so client-side
+// routing (react-router) works on a hard refresh/direct link.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.join(__dirname, '..', 'public');
+app.use(express.static(clientDist));
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(clientDist, 'index.html'), (err) => {
+    if (err) next(err);
+  });
+});
 
 app.use((err, req, res, next) => {
   console.error(err);
