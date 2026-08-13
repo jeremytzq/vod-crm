@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+server/public/
+.env
+.env.local
+*.sqlite
+*.sqlite3
+server/data/
+.DS_Store
+npm-debug.log*
