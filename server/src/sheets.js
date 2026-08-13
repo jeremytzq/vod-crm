@@ -10,7 +10,27 @@ import { drive } from '@googleapis/drive';
 // entire "database" for that account. Column order here is the column
 // order in the sheet.
 export const TAB_SCHEMA = {
-  contacts: ['id', 'name', 'email', 'phone', 'title', 'company_id', 'notes', 'created_at', 'updated_at'],
+  contacts: [
+    'id',
+    'name',
+    'email',
+    'phone',
+    'whatsapp_number',
+    'title',
+    'company_id',
+    'client_type',
+    'lead_stage',
+    'opportunity_size',
+    'project_interested',
+    'birthday',
+    'property_address',
+    'correspondence_address',
+    'cust_grade',
+    'groups',
+    'notes',
+    'created_at',
+    'updated_at',
+  ],
   companies: ['id', 'name', 'domain', 'industry', 'notes', 'created_at', 'updated_at'],
   deals: [
     'id',
@@ -25,7 +45,10 @@ export const TAB_SCHEMA = {
     'updated_at',
   ],
   tasks: ['id', 'title', 'due_date', 'done', 'contact_id', 'deal_id', 'created_at', 'updated_at'],
-  notes: ['id', 'entity_type', 'entity_id', 'body', 'created_at'],
+  // "notes" doubles as the activity timeline: `type` distinguishes a plain
+  // note from a logged call/WhatsApp/message/system event so the UI can
+  // render each with its own icon, most-recent first.
+  notes: ['id', 'entity_type', 'entity_id', 'type', 'body', 'created_at'],
 };
 
 const TAB_TITLE = {

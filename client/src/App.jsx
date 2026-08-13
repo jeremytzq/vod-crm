@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
+import ContactDetail from './pages/ContactDetail';
 import Companies from './pages/Companies';
 import Deals from './pages/Deals';
 import Tasks from './pages/Tasks';
@@ -23,6 +24,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/contacts" element={<Contacts />} />
+        <Route path="/contacts/:id" element={<ContactDetail />} />
         <Route path="/companies" element={<Companies />} />
         <Route path="/deals" element={<Deals />} />
         <Route path="/tasks" element={<Tasks />} />

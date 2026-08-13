@@ -1,35 +1,25 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useResource } from '../hooks/useResource';
 import Modal from '../components/Modal';
 import RecordForm from '../components/RecordForm';
 
+const fields = [
+  { name: 'name', label: 'Full name', required: true },
+  { name: 'email', label: 'Email', type: 'email' },
+  { name: 'phone', label: 'Mobile number' },
+];
+
 export default function Contacts() {
-  const { items, loading, error, create, update, remove } = useResource('contacts');
-  const { items: companies } = useResource('companies');
-  const [editing, setEditing] = useState(null);
-
-  const fields = [
-    { name: 'name', label: 'Full name', required: true },
-    { name: 'email', label: 'Email', type: 'email' },
-    { name: 'phone', label: 'Phone' },
-    { name: 'title', label: 'Job title' },
-    {
-      name: 'company_id',
-      label: 'Company',
-      type: 'select',
-      options: companies.map((c) => ({ value: c.id, label: c.name })),
-    },
-    { name: 'notes', label: 'Notes', type: 'textarea' },
-  ];
-
-  const companyName = (id) => companies.find((c) => c.id === id)?.name;
+  const { items, loading, error, create, remove } = useResource('contacts');
+  const [creating, setCreating] = useState(false);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Contacts</h1>
         <button
-          onClick={() => setEditing({})}
+          onClick={() => setCreating(true)}
           className="px-4 py-2 text-sm rounded-md bg-brand-600 text-white hover:bg-brand-700"
         >
           + New contact
@@ -42,20 +32,18 @@ export default function Contacts() {
       <div className="bg-white border border-gray-200 rounded-lg divide-y">
         {items.map((c) => (
           <div key={c.id} className="flex items-center justify-between px-4 py-3">
-            <div>
+            <Link to={`/contacts/${c.id}`} className="min-w-0 hover:underline">
               <p className="font-medium">{c.name}</p>
               <p className="text-sm text-gray-500">
-                {[c.title, companyName(c.company_id), c.email].filter(Boolean).join(' · ') || '—'}
+                {[c.lead_stage, c.title, c.email].filter(Boolean).join(' · ') || '—'}
               </p>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setEditing(c)} className="text-sm text-brand-600 hover:underline">
-                Edit
-              </button>
-              <button onClick={() => remove(c.id)} className="text-sm text-red-600 hover:underline">
-                Delete
-              </button>
-            </div>
+            </Link>
+            <button
+              onClick={() => remove(c.id)}
+              className="text-sm text-red-600 hover:underline shrink-0 ml-3"
+            >
+              Delete
+            </button>
           </div>
         ))}
         {!loading && items.length === 0 && (
@@ -63,16 +51,14 @@ export default function Contacts() {
         )}
       </div>
 
-      {editing !== null && (
-        <Modal title={editing.id ? 'Edit contact' : 'New contact'} onClose={() => setEditing(null)}>
+      {creating && (
+        <Modal title="New contact" onClose={() => setCreating(false)}>
           <RecordForm
             fields={fields}
-            initial={editing}
-            onCancel={() => setEditing(null)}
+            onCancel={() => setCreating(false)}
             onSubmit={async (values) => {
-              if (editing.id) await update(editing.id, values);
-              else await create(values);
-              setEditing(null);
+              await create(values);
+              setCreating(false);
             }}
           />
         </Modal>
